@@ -73,14 +73,6 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## 🎬 Demo Flow (60 seconds)
-
-1. **Upload** a Japanese contract PDF
-2. **Watch** auto-detection: "🇯🇵 Japanese detected"
-3. **View** side-by-side: original Japanese + English translation
-4. **Search** in English → highlights appear in both versions
-5. **Export** certified translation for court filing
-
 ## 🏗️ Architecture
 
 ```
