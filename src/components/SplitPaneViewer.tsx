@@ -53,22 +53,44 @@ export default function SplitPaneViewer({
 
     if (!originalEl || !translatedEl) return;
 
-    let isScrolling = false;
+    // Track which pane initiated the scroll to prevent feedback loops
+    let scrollingPane: 'original' | 'translated' | null = null;
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const handleOriginalScroll = () => {
-      if (isScrolling) return;
-      isScrolling = true;
-      const scrollRatio = originalEl.scrollTop / (originalEl.scrollHeight - originalEl.clientHeight);
-      translatedEl.scrollTop = scrollRatio * (translatedEl.scrollHeight - translatedEl.clientHeight);
-      requestAnimationFrame(() => { isScrolling = false; });
+      // If the translated pane initiated the scroll, ignore this event
+      if (scrollingPane === 'translated') return;
+      
+      scrollingPane = 'original';
+      
+      const maxScroll = originalEl.scrollHeight - originalEl.clientHeight;
+      if (maxScroll <= 0) return;
+      
+      const scrollRatio = originalEl.scrollTop / maxScroll;
+      const targetScroll = scrollRatio * (translatedEl.scrollHeight - translatedEl.clientHeight);
+      translatedEl.scrollTop = targetScroll;
+      
+      // Reset scrolling pane after a delay
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => { scrollingPane = null; }, 50);
     };
 
     const handleTranslatedScroll = () => {
-      if (isScrolling) return;
-      isScrolling = true;
-      const scrollRatio = translatedEl.scrollTop / (translatedEl.scrollHeight - translatedEl.clientHeight);
-      originalEl.scrollTop = scrollRatio * (originalEl.scrollHeight - originalEl.clientHeight);
-      requestAnimationFrame(() => { isScrolling = false; });
+      // If the original pane initiated the scroll, ignore this event
+      if (scrollingPane === 'original') return;
+      
+      scrollingPane = 'translated';
+      
+      const maxScroll = translatedEl.scrollHeight - translatedEl.clientHeight;
+      if (maxScroll <= 0) return;
+      
+      const scrollRatio = translatedEl.scrollTop / maxScroll;
+      const targetScroll = scrollRatio * (originalEl.scrollHeight - originalEl.clientHeight);
+      originalEl.scrollTop = targetScroll;
+      
+      // Reset scrolling pane after a delay
+      if (scrollTimeout) clearTimeout(scrollTimeout);
+      scrollTimeout = setTimeout(() => { scrollingPane = null; }, 50);
     };
 
     originalEl.addEventListener('scroll', handleOriginalScroll);
@@ -77,6 +99,7 @@ export default function SplitPaneViewer({
     return () => {
       originalEl.removeEventListener('scroll', handleOriginalScroll);
       translatedEl.removeEventListener('scroll', handleTranslatedScroll);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
     };
   }, [syncScroll]);
 
