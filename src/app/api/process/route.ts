@@ -287,15 +287,28 @@ Provide ONLY the translation, no explanations or notes.`
   }
 }
 
+// Get document name without extension for vault naming
+function getDocumentBaseName(filename: string): string {
+  // Remove file extension
+  const lastDot = filename.lastIndexOf('.');
+  const baseName = lastDot > 0 ? filename.slice(0, lastDot) : filename;
+  return baseName;
+}
+
 // Create or get a vault for document processing
-async function getOrCreateVault(): Promise<string> {
+async function getOrCreateVault(filename: string): Promise<string> {
   // Check if we have a cached vault ID in environment
   const envVaultId = process.env.CASE_VAULT_ID;
   if (envVaultId) {
+    console.log('Using cached vault ID from environment:', envVaultId);
     return envVaultId;
   }
 
-  // Create a new vault for processing
+  // Create a new vault with document name: "[DOCUMENT NAME] Translation"
+  const documentName = getDocumentBaseName(filename);
+  const vaultName = `${documentName} Translation`;
+  console.log('Creating new vault with name:', vaultName);
+  
   const response = await fetch(`${API_BASE_URL}/vault`, {
     method: 'POST',
     headers: {
@@ -303,8 +316,8 @@ async function getOrCreateVault(): Promise<string> {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      name: `multi-lang-processor-${Date.now()}`,
-      description: 'Temporary vault for document processing',
+      name: vaultName,
+      description: `Translation of ${filename}`,
       enableGraph: false,
     }),
   });
@@ -315,12 +328,13 @@ async function getOrCreateVault(): Promise<string> {
   }
 
   const vault = await response.json();
+  console.log('Created vault:', vault.id, 'with name:', vault.name);
   return vault.id;
 }
 
 // Upload file to temporary storage and get a public URL for OCR
 async function uploadToVaultAndGetUrl(buffer: Buffer, filename: string, contentType: string): Promise<{ url: string; objectId: string; vaultId: string }> {
-  const vaultId = await getOrCreateVault();
+  const vaultId = await getOrCreateVault(filename);
   console.log('Using vault for temp storage:', vaultId);
 
   // Get presigned upload URL
@@ -381,16 +395,50 @@ async function uploadToVaultAndGetUrl(buffer: Buffer, filename: string, contentT
   return { url: objectData.downloadUrl, objectId: uploadData.objectId, vaultId };
 }
 
-// Extract text from PDF using vault ingestion (with doctr OCR)
-// Note: For Japanese/CJK text, doctr may not work well - we detect and handle this
-async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<string> {
+// Save processed data to vault object metadata
+async function saveProcessedDataToVault(
+  vaultId: string, 
+  objectId: string, 
+  data: { 
+    originalText: string;
+    translatedText: string; 
+    detectedLanguage: string; 
+    detectedLanguageName: string;
+  }
+): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}/vault/${vaultId}/objects/${objectId}/metadata`, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        mlp_original_text: data.originalText,
+        mlp_translation: data.translatedText,
+        mlp_detected_language: data.detectedLanguage,
+        mlp_detected_language_name: data.detectedLanguageName,
+        mlp_translated_at: new Date().toISOString(),
+      }),
+    });
+    console.log('Processed data saved to vault metadata');
+  } catch (error) {
+    console.error('Failed to save processed data to vault:', error);
+    // Don't throw - this is a best-effort cache
+  }
+}
+
+// Extract text from PDF using vault ingestion (text extraction, not OCR)
+// The vault will extract embedded text from PDFs directly
+// Returns: { text, vaultId, objectId } for saving metadata later
+async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<{ text: string; vaultId: string; objectId: string }> {
   if (!API_KEY) {
-    return '[Text extraction requires CASE_API_KEY - Please add your API key to .env.local]';
+    return { text: '[Text extraction requires CASE_API_KEY - Please add your API key to .env.local]', vaultId: '', objectId: '' };
   }
 
   try {
     // Step 1: Get or create a vault
-    const vaultId = await getOrCreateVault();
+    const vaultId = await getOrCreateVault(filename);
     console.log('Using vault:', vaultId);
 
     // Step 2: Get presigned upload URL
@@ -403,7 +451,7 @@ async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<str
       body: JSON.stringify({
         filename,
         contentType: 'application/pdf',
-        auto_index: true,
+        auto_index: true, // This triggers text extraction (not OCR) for PDFs
       }),
     });
 
@@ -429,7 +477,7 @@ async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<str
     }
     console.log('File uploaded to S3');
 
-    // Step 4: Trigger ingestion
+    // Step 4: Trigger ingestion (text extraction for PDFs)
     const ingestResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/ingest/${uploadData.objectId}`, {
       method: 'POST',
       headers: {
@@ -442,7 +490,7 @@ async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<str
       const errorText = await ingestResponse.text();
       console.error('Ingest trigger failed:', errorText);
     } else {
-      console.log('Ingestion triggered');
+      console.log('Text extraction triggered');
     }
 
     // Step 5: Poll for ingestion completion
@@ -483,20 +531,7 @@ async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<str
         console.log('First 500 chars:', extractedText.slice(0, 500));
         console.log('=== END DEBUG ===');
         
-        // Check if OCR produced garbled text (no CJK characters but has garbled patterns)
-        // This indicates doctr couldn't handle the language
-        const hasCJK = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF\uAC00-\uD7AF]/.test(extractedText);
-        const hasGarbledPattern = /[A-Z]{2,}[0-9]+|[A-Z][a-z]+[A-Z]/.test(extractedText.slice(0, 200));
-        
-        if (!hasCJK && hasGarbledPattern && extractedText.length > 100) {
-          console.log('OCR produced garbled text (likely non-Latin document)');
-          console.log('Note: The doctr OCR engine does not support Japanese/CJK text well.');
-          console.log('Returning garbled text - translation will attempt to interpret it.');
-          // Return the garbled text - the LLM translation might still be able to help
-          // or the user will see the issue and can try a different approach
-        }
-        
-        return extractedText;
+        return { text: extractedText, vaultId, objectId: uploadData.objectId };
       }
 
       if (status.ingestionStatus === 'failed') {
@@ -706,7 +741,6 @@ export async function POST(request: NextRequest) {
     
     // STEP 1: Detect language FIRST using LLM (before OCR)
     // This gives us the language immediately from the document visual content
-    console.log('=== STEP 1: LANGUAGE DETECTION ===');
     let detectedLang = { language: 'en', languageName: 'English', confidence: 0.5 };
     
     if (file.type === 'application/pdf' || file.type.startsWith('image/')) {
@@ -718,6 +752,8 @@ export async function POST(request: NextRequest) {
     // STEP 2: Extract text (OCR for PDFs/images, direct read for text files)
     console.log('=== STEP 2: TEXT EXTRACTION ===');
     let originalText = '';
+    let vaultId = '';
+    let objectId = '';
     
     // Check if it's a text file or needs OCR
     if (file.type === 'text/plain') {
@@ -732,7 +768,10 @@ export async function POST(request: NextRequest) {
     } else if (file.type === 'application/pdf') {
       // Use vault ingestion for PDF text extraction
       try {
-        originalText = await extractTextFromPDF(buffer, file.name);
+        const result = await extractTextFromPDF(buffer, file.name);
+        originalText = result.text;
+        vaultId = result.vaultId;
+        objectId = result.objectId;
       } catch (error) {
         // If extraction fails, return error
         console.error('PDF extraction error:', error);
@@ -786,6 +825,17 @@ export async function POST(request: NextRequest) {
     let translatedText = originalText;
     if (detectedLang.language !== 'en') {
       translatedText = await translateText(originalText, detectedLang.language);
+    }
+
+    // STEP 4: Save processed data to vault metadata for caching
+    if (vaultId && objectId) {
+      console.log('=== STEP 4: SAVING TO VAULT METADATA ===');
+      await saveProcessedDataToVault(vaultId, objectId, {
+        originalText,
+        translatedText,
+        detectedLanguage: detectedLang.language,
+        detectedLanguageName: detectedLang.languageName,
+      });
     }
 
     console.log('=== FINAL RESPONSE DEBUG ===');

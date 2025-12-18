@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Globe, 
   FileText, 
@@ -9,12 +9,16 @@ import {
   Award,
   ChevronRight,
   Upload,
-  Trash2
+  Trash2,
+  Database,
+  Loader2
 } from 'lucide-react';
 import DocumentUpload from '@/components/DocumentUpload';
 import SplitPaneViewer from '@/components/SplitPaneViewer';
 import BilingualSearch from '@/components/BilingualSearch';
 import CertifiedExport from '@/components/CertifiedExport';
+import VaultSelector from '@/components/VaultSelector';
+import VaultDocumentBrowser from '@/components/VaultDocumentBrowser';
 import { LanguageCode, SUPPORTED_LANGUAGES } from '@/lib/types';
 
 interface ProcessedDocument {
@@ -28,17 +32,21 @@ interface ProcessedDocument {
 }
 
 type ViewMode = 'upload' | 'viewer' | 'search';
+type SourceMode = 'upload' | 'vault';
 
 export default function Home() {
   const [documents, setDocuments] = useState<ProcessedDocument[]>([]);
   const [selectedDocument, setSelectedDocument] = useState<ProcessedDocument | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('upload');
+  const [sourceMode, setSourceMode] = useState<SourceMode>('upload');
+  const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isLoadingFromVault, setIsLoadingFromVault] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightedChunks, setHighlightedChunks] = useState<{ original: string[]; translated: string[] } | undefined>();
   const [showExportModal, setShowExportModal] = useState(false);
 
-  // Handle document processed
+  // Handle document processed (from upload or vault)
   const handleDocumentProcessed = (doc: {
     id: string;
     filename: string;
@@ -51,18 +59,60 @@ export default function Home() {
       ...doc,
       uploadedAt: new Date().toISOString(),
     };
-    setDocuments(prev => [...prev, newDoc]);
+    setDocuments(prev => {
+      // Check if document already exists (from vault)
+      const exists = prev.find(d => d.id === doc.id);
+      if (exists) {
+        return prev.map(d => d.id === doc.id ? newDoc : d);
+      }
+      return [...prev, newDoc];
+    });
     setSelectedDocument(newDoc);
     setViewMode('viewer');
   };
 
-  // Handle document selection
-  const handleSelectDocument = (docId: string, chunks?: { original: string[]; translated: string[] }) => {
+  // Handle document selection - load on demand if not already loaded
+  const handleSelectDocument = async (docId: string, chunks?: { original: string[]; translated: string[] }) => {
     const doc = documents.find(d => d.id === docId);
-    if (doc) {
+    if (!doc) return;
+
+    // If document is already loaded (has text), just select it
+    if (doc.originalText) {
       setSelectedDocument(doc);
       setHighlightedChunks(chunks);
       setViewMode('viewer');
+      return;
+    }
+
+    // Document needs to be loaded from vault
+    if (selectedVaultId) {
+      setIsLoadingFromVault(true);
+      try {
+        const response = await fetch(`/api/vaults/${selectedVaultId}/documents/${docId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch document');
+        }
+        const docData = await response.json();
+
+        const processedDoc: ProcessedDocument = {
+          id: docData.id,
+          filename: docData.filename,
+          originalLanguage: docData.detectedLanguage as LanguageCode,
+          originalText: docData.originalText,
+          translatedText: docData.translatedText,
+          pageCount: docData.pageCount || 1,
+          uploadedAt: docData.createdAt || new Date().toISOString(),
+        };
+
+        setDocuments(prev => prev.map(d => d.id === processedDoc.id ? processedDoc : d));
+        setSelectedDocument(processedDoc);
+        setHighlightedChunks(chunks);
+        setViewMode('viewer');
+      } catch (error) {
+        console.error('Error loading document:', error);
+      } finally {
+        setIsLoadingFromVault(false);
+      }
     }
   };
 
@@ -79,6 +129,81 @@ export default function Home() {
       setViewMode('upload');
     }
   };
+
+  // Handle vault selection
+  const handleVaultSelect = (vaultId: string | null) => {
+    setSelectedVaultId(vaultId);
+    if (vaultId) {
+      setSourceMode('vault');
+    } else {
+      setSourceMode('upload');
+    }
+  };
+
+  // Auto-load vault documents when a vault is selected
+  const loadVaultDocuments = useCallback(async (vaultId: string) => {
+    setIsLoadingFromVault(true);
+    try {
+      // Fetch all documents from the vault
+      const response = await fetch(`/api/vaults/${vaultId}/documents`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch vault documents');
+      }
+      const vaultDocs = await response.json();
+      
+      if (vaultDocs.length === 0) {
+        setIsLoadingFromVault(false);
+        return;
+      }
+
+      // Create placeholder entries for all documents in sidebar
+      const placeholderDocs: ProcessedDocument[] = vaultDocs.map((doc: { id: string; filename: string; createdAt?: string }) => ({
+        id: doc.id,
+        filename: doc.filename,
+        originalLanguage: 'en' as LanguageCode, // Will be updated when loaded
+        originalText: '',
+        translatedText: '',
+        pageCount: 1,
+        uploadedAt: doc.createdAt || new Date().toISOString(),
+      }));
+      
+      setDocuments(placeholderDocs);
+
+      // Load and translate the first document
+      const firstDoc = vaultDocs[0];
+      const docResponse = await fetch(`/api/vaults/${vaultId}/documents/${firstDoc.id}`);
+      if (!docResponse.ok) {
+        throw new Error('Failed to fetch first document');
+      }
+      const docData = await docResponse.json();
+
+      // Update the first document with full data
+      const processedDoc: ProcessedDocument = {
+        id: docData.id,
+        filename: docData.filename,
+        originalLanguage: docData.detectedLanguage as LanguageCode,
+        originalText: docData.originalText,
+        translatedText: docData.translatedText,
+        pageCount: docData.pageCount || 1,
+        uploadedAt: docData.createdAt || new Date().toISOString(),
+      };
+
+      setDocuments(prev => prev.map(d => d.id === processedDoc.id ? processedDoc : d));
+      setSelectedDocument(processedDoc);
+      setViewMode('viewer');
+    } catch (error) {
+      console.error('Error loading vault documents:', error);
+    } finally {
+      setIsLoadingFromVault(false);
+    }
+  }, []);
+
+  // Effect to auto-load documents when vault is selected
+  useEffect(() => {
+    if (selectedVaultId) {
+      loadVaultDocuments(selectedVaultId);
+    }
+  }, [selectedVaultId, loadVaultDocuments]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -169,13 +294,14 @@ export default function Home() {
                   {documents.map((doc) => {
                     const langInfo = SUPPORTED_LANGUAGES[doc.originalLanguage];
                     const isSelected = selectedDocument?.id === doc.id;
+                    const isLoaded = !!doc.originalText;
                     
                     return (
                       <div
                         key={doc.id}
                         className={`p-3 cursor-pointer transition-colors ${
                           isSelected ? 'bg-blue-50' : 'hover:bg-gray-50'
-                        }`}
+                        } ${!isLoaded ? 'opacity-70' : ''}`}
                         onClick={() => handleSelectDocument(doc.id)}
                       >
                         <div className="flex items-start justify-between gap-2">
@@ -190,10 +316,16 @@ export default function Home() {
                                 {doc.filename}
                               </p>
                               <div className="flex items-center gap-1 mt-1">
-                                <span className="text-xs">{langInfo.flag}</span>
-                                <span className="text-xs text-gray-500">{langInfo.name}</span>
-                                <ChevronRight className="w-3 h-3 text-gray-400" />
-                                <span className="text-xs">🇺🇸</span>
+                                {isLoaded ? (
+                                  <>
+                                    <span className="text-xs">{langInfo?.flag || '🌐'}</span>
+                                    <span className="text-xs text-gray-500">{langInfo?.name || 'Unknown'}</span>
+                                    <ChevronRight className="w-3 h-3 text-gray-400" />
+                                    <span className="text-xs">🇺🇸</span>
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-gray-400 italic">Click to load & translate</span>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -230,18 +362,74 @@ export default function Home() {
                       Multi-Language Document Processor
                     </h2>
                     <p className="text-gray-600 max-w-lg mx-auto">
-                      Upload documents in any language. We&apos;ll automatically detect the language, 
+                      Upload documents in any language or browse your previous uploads. We&apos;ll automatically detect the language, 
                       extract text with OCR, translate to English, and make everything searchable.
                     </p>
                   </div>
                 )}
 
-                {/* Upload Component */}
-                <DocumentUpload
-                  onDocumentProcessed={handleDocumentProcessed}
-                  isProcessing={isProcessing}
-                  setIsProcessing={setIsProcessing}
-                />
+                {/* Source Mode Toggle */}
+                <div className="bg-white rounded-lg border border-gray-200 p-4">
+                  <div className="flex items-center gap-4 mb-4">
+                    <button
+                      onClick={() => {
+                        setSourceMode('upload');
+                        setSelectedVaultId(null);
+                      }}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        sourceMode === 'upload'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Upload className="w-4 h-4" />
+                      Upload New
+                    </button>
+                    <button
+                      onClick={() => setSourceMode('vault')}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                        sourceMode === 'vault'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      <Database className="w-4 h-4" />
+                      Previous Uploads
+                    </button>
+                  </div>
+
+                  {/* Vault Selector (shown when vault mode is selected) */}
+                  {sourceMode === 'vault' && (
+                    <div className="mb-4">
+                      <VaultSelector
+                        selectedVaultId={selectedVaultId}
+                        onVaultSelect={handleVaultSelect}
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Upload Component or Vault Browser */}
+                {sourceMode === 'upload' ? (
+                  <DocumentUpload
+                    onDocumentProcessed={handleDocumentProcessed}
+                    isProcessing={isProcessing}
+                    setIsProcessing={setIsProcessing}
+                  />
+                ) : selectedVaultId ? (
+                  <VaultDocumentBrowser
+                    vaultId={selectedVaultId}
+                    onDocumentSelect={handleDocumentProcessed}
+                  />
+                ) : (
+                  <div className="bg-white rounded-lg border border-gray-200 p-8 text-center">
+                    <Database className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-600 font-medium">Select a collection above</p>
+                    <p className="text-sm text-gray-500 mt-1">
+                      Choose a collection to browse and translate documents
+                    </p>
+                  </div>
+                )}
 
                 {/* Features */}
                 {documents.length === 0 && (
@@ -342,6 +530,21 @@ export default function Home() {
           document={selectedDocument}
           onClose={() => setShowExportModal(false)}
         />
+      )}
+
+      {/* Loading Overlay - Only shown when loading previous uploads, not new uploads */}
+      {isLoadingFromVault && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-8 shadow-2xl flex flex-col items-center gap-4 max-w-sm mx-4">
+            <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+            <div className="text-center">
+              <p className="font-semibold text-gray-900">Loading Document</p>
+              <p className="text-sm text-gray-500 mt-1">
+                Detecting language and translating...
+              </p>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
