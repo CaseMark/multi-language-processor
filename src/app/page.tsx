@@ -262,7 +262,7 @@ export default function Home() {
             </nav>
 
             {/* Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               {selectedDocument && (
                 <button
                   onClick={() => setShowExportModal(true)}
@@ -274,6 +274,22 @@ export default function Home() {
               )}
               <div className="text-sm text-gray-500">
                 {documents.length} document{documents.length !== 1 ? 's' : ''}
+              </div>
+              <div className="flex items-center gap-1.5 text-sm text-gray-500 border-l border-gray-200 pl-4">
+                <span>Built with</span>
+                <a 
+                  href="https://case.dev" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 hover:text-gray-700 transition-colors"
+                >
+                  <img 
+                    src="/casedev-logo.svg" 
+                    alt="Case.dev" 
+                    className="h-5 w-5"
+                  />
+                  <span className="font-medium">case.dev</span>
+                </a>
               </div>
             </div>
           </div>
