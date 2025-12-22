@@ -296,11 +296,6 @@ export default function SplitPaneViewer({
           <div 
             ref={originalRef}
             className="flex-1 overflow-auto p-4 text-gray-800 leading-relaxed"
-            style={{ 
-              fontFamily: originalLanguage === 'ja' || originalLanguage === 'zh' || originalLanguage === 'ko' 
-                ? '"Noto Sans JP", "Noto Sans SC", "Noto Sans KR", sans-serif' 
-                : 'inherit'
-            }}
           >
             <div className="whitespace-pre-wrap">
               {highlightText(originalText, searchQuery, highlightedChunks?.original)}

@@ -3,27 +3,52 @@ import { NextRequest, NextResponse } from 'next/server';
 const API_BASE_URL = process.env.CASE_API_URL || 'https://api.case.dev';
 const API_KEY = process.env.CASE_API_KEY;
 
+// Supported Latin alphabet language codes
 const LANGUAGE_NAMES: Record<string, string> = {
-  ja: 'Japanese', zh: 'Chinese', ko: 'Korean', ar: 'Arabic',
-  he: 'Hebrew', ru: 'Russian', th: 'Thai', hi: 'Hindi',
-  el: 'Greek', es: 'Spanish', fr: 'French', de: 'German',
-  it: 'Italian', pt: 'Portuguese', nl: 'Dutch', pl: 'Polish',
-  tr: 'Turkish', vi: 'Vietnamese', id: 'Indonesian', ms: 'Malay',
+  // Western European
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+  pt: 'Portuguese',
+  nl: 'Dutch',
+  // Central European
+  pl: 'Polish',
+  cs: 'Czech',
+  hu: 'Hungarian',
+  ro: 'Romanian',
+  sk: 'Slovak',
+  sl: 'Slovenian',
+  hr: 'Croatian',
+  // Nordic
+  sv: 'Swedish',
+  da: 'Danish',
+  fi: 'Finnish',
+  no: 'Norwegian',
+  is: 'Icelandic',
+  // Other Latin-script
+  tr: 'Turkish',
+  id: 'Indonesian',
+  ms: 'Malay',
+  vi: 'Vietnamese',
+  tl: 'Tagalog',
+  // English
   en: 'English',
 };
 
-// Detect language using LLM (same method as new uploads)
-// This is more accurate than text-based pattern matching
+// Get supported language codes as a string for LLM prompts
+const SUPPORTED_LANG_CODES = Object.entries(LANGUAGE_NAMES)
+  .map(([code, name]) => `${code} (${name})`)
+  .join(', ');
+
+// Detect language using LLM
 async function detectLanguageWithLLM(text: string): Promise<{ language: string; languageName: string; confidence: number }> {
   if (!API_KEY || text.length < 50) {
     return { language: 'en', languageName: 'English', confidence: 0.5 };
   }
 
   try {
-    // Use a sample of the text for language detection
     const sampleText = text.slice(0, 3000);
-    
-    console.log('Detecting language with LLM...');
     
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
@@ -41,7 +66,7 @@ async function detectLanguageWithLLM(text: string): Promise<{ language: string; 
 Respond with ONLY a JSON object in this exact format (no other text):
 {"language_code": "XX", "language_name": "Language Name", "confidence": 0.95}
 
-Where language_code is one of: ja (Japanese), zh (Chinese), ko (Korean), ar (Arabic), he (Hebrew), ru (Russian), th (Thai), hi (Hindi), el (Greek), es (Spanish), fr (French), de (German), it (Italian), pt (Portuguese), nl (Dutch), pl (Polish), tr (Turkish), vi (Vietnamese), id (Indonesian), ms (Malay), en (English)
+Where language_code is one of: ${SUPPORTED_LANG_CODES}
 
 Text to analyze:
 ${sampleText}`
@@ -53,16 +78,12 @@ ${sampleText}`
     });
 
     if (!response.ok) {
-      console.error('LLM language detection failed:', response.status);
       return { language: 'en', languageName: 'English', confidence: 0.5 };
     }
 
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content || '';
     
-    console.log('LLM language detection response:', content);
-    
-    // Parse the JSON response
     try {
       const jsonMatch = content.match(/\{[^}]+\}/);
       if (jsonMatch) {
@@ -71,21 +92,18 @@ ${sampleText}`
         const langName = parsed.language_name || LANGUAGE_NAMES[langCode] || 'Unknown';
         const confidence = parsed.confidence || 0.8;
         
-        console.log(`LLM detected language: ${langName} (${langCode}) with confidence ${confidence}`);
-        
         return {
           language: langCode,
           languageName: langName,
           confidence: confidence
         };
       }
-    } catch (parseError) {
-      console.error('Failed to parse LLM language response:', parseError);
+    } catch {
+      // Parse error - fall through to default
     }
     
     return { language: 'en', languageName: 'English', confidence: 0.5 };
-  } catch (error) {
-    console.error('Language detection error:', error);
+  } catch {
     return { language: 'en', languageName: 'English', confidence: 0.5 };
   }
 }
@@ -127,14 +145,12 @@ Provide ONLY the translation, no explanations or notes.`
     });
 
     if (!response.ok) {
-      console.error('Translation API error:', response.status);
       return text;
     }
 
     const data = await response.json();
     return data.choices[0].message.content;
-  } catch (error) {
-    console.error('Translation error:', error);
+  } catch {
     return text;
   }
 }
@@ -148,7 +164,6 @@ async function cleanupOCRText(text: string, sourceLanguage: string): Promise<str
   const langName = LANGUAGE_NAMES[sourceLanguage] || sourceLanguage;
 
   try {
-    console.log('Cleaning up OCR text formatting...');
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
       headers: {
@@ -183,16 +198,12 @@ Output ONLY the cleaned up ${langName} text, nothing else.`
     });
 
     if (!response.ok) {
-      console.error('Text cleanup failed:', response.status);
       return text;
     }
 
     const data = await response.json();
-    const cleanedText = data.choices[0].message.content;
-    console.log('Text cleanup complete');
-    return cleanedText;
-  } catch (error) {
-    console.error('Text cleanup error:', error);
+    return data.choices[0].message.content;
+  } catch {
     return text;
   }
 }
@@ -223,10 +234,8 @@ async function saveTranslationToVault(
         mlp_translated_at: new Date().toISOString(),
       }),
     });
-    console.log('Translation and original text saved to vault metadata');
-  } catch (error) {
-    console.error('Failed to save translation to vault:', error);
-    // Don't throw - this is a best-effort cache
+  } catch {
+    // Best-effort cache - don't throw
   }
 }
 
@@ -249,19 +258,10 @@ export async function GET(
     });
 
     if (!metaResponse.ok) {
-      return NextResponse.json({ error: 'Failed to fetch document metadata' }, { status: metaResponse.status });
+      return NextResponse.json({ error: 'Failed to fetch document' }, { status: metaResponse.status });
     }
 
     const metadata = await metaResponse.json();
-
-    // Debug: Log all metadata fields
-    console.log('=== METADATA DEBUG ===');
-    console.log('All metadata keys:', Object.keys(metadata));
-    console.log('mlp_detected_language:', metadata.mlp_detected_language);
-    console.log('mlp_detected_language_name:', metadata.mlp_detected_language_name);
-    console.log('mlp_original_text exists:', !!metadata.mlp_original_text);
-    console.log('mlp_translation exists:', !!metadata.mlp_translation);
-    console.log('=== END METADATA DEBUG ===');
 
     // Check if we have cached data in metadata
     const cachedOriginalText = metadata.mlp_original_text;
@@ -269,10 +269,8 @@ export async function GET(
     const cachedLanguage = metadata.mlp_detected_language;
     const cachedLanguageName = metadata.mlp_detected_language_name;
 
-    // If we have all cached data, use it (no need to fetch raw text)
+    // If we have all cached data, use it
     if (cachedOriginalText && cachedTranslation && cachedLanguage) {
-      console.log('Using fully cached data from vault metadata');
-      console.log('Cached language:', cachedLanguage, cachedLanguageName);
       return NextResponse.json({
         id: objectId,
         filename: metadata.filename || metadata.name || 'Unknown',
@@ -300,22 +298,17 @@ export async function GET(
     const textData = await textResponse.json();
     const rawText = textData.text || '';
 
-    // Use cached language if available (from initial upload), otherwise detect with LLM
+    // Use cached language if available, otherwise detect with LLM
     let language: string;
     let languageName: string;
     
     if (cachedLanguage) {
-      // Use the language that was detected during initial upload (more accurate)
       language = cachedLanguage;
       languageName = cachedLanguageName || LANGUAGE_NAMES[cachedLanguage] || 'Unknown';
-      console.log('Using cached language from metadata:', language, languageName);
     } else {
-      // Fallback: detect language using LLM (same method as new uploads)
-      console.log('No cached language found, detecting with LLM...');
       const detected = await detectLanguageWithLLM(rawText);
       language = detected.language;
       languageName = detected.languageName;
-      console.log('LLM detected language from text:', language, languageName);
     }
 
     // Clean up the OCR text if not English
@@ -349,8 +342,7 @@ export async function GET(
       createdAt: metadata.createdAt,
       cached: false,
     });
-  } catch (error) {
-    console.error('Error fetching document:', error);
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch document' }, { status: 500 });
   }
 }

@@ -134,8 +134,8 @@ If the language is not in this list, use the closest match.`
         confidence: parsed.confidence,
       };
     } catch {
-      // Default to Japanese if parsing fails (common use case)
-      return { language: 'ja', confidence: 0.5 };
+      // Default to Spanish if parsing fails (common Latin-alphabet language)
+      return { language: 'es', confidence: 0.5 };
     }
   },
 
