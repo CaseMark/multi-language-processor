@@ -1,6 +1,6 @@
 # 🌐 Multi-Language Document Processor
 
-Upload documents in any language, OCR them, translate to English, and make them searchable in both languages. Built for international litigation and cross-border legal matters.
+Upload documents in Latin-script languages, OCR them, translate to English, and make them searchable in both languages. Built for international litigation and cross-border legal matters.
 
 ![Multi-Language Processor](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript)
@@ -8,11 +8,12 @@ Upload documents in any language, OCR them, translate to English, and make them 
 
 ## ✨ Features
 
-### 🔤 Multilingual OCR (50+ Languages)
-- European languages (Spanish, French, German, Italian, Portuguese, etc.)
-- Arabic, Hebrew, Russian, Ukrainian
-- Southeast Asian languages (Thai, Vietnamese, Indonesian, Malay)
-- And many more...
+### 🔤 Multilingual OCR (Latin Alphabet Languages)
+- European languages (Spanish, French, German, Italian, Portuguese, Dutch, Polish, etc.)
+- Nordic languages (Swedish, Danish, Norwegian, Finnish)
+- Other Latin-script languages
+
+> **Note:** This tool currently supports languages that use the Latin alphabet. Non-Latin scripts (such as Chinese, Japanese, Korean, Arabic, Hebrew, Russian, etc.) are not yet supported.
 
 ### 🔍 Automatic Language Detection
 - AI-powered language identification
@@ -142,16 +143,16 @@ const results = await vaultService.search(vaultId, query, { method: 'hybrid' });
 
 | Region | Languages |
 |--------|-----------|
-| East Asia | Japanese 🇯🇵, Chinese (Simplified) 🇨🇳, Chinese (Traditional) 🇹🇼, Korean 🇰🇷 |
-| Europe | Spanish 🇪🇸, French 🇫🇷, German 🇩🇪, Italian 🇮🇹, Portuguese 🇵🇹, Dutch 🇳🇱, Polish 🇵🇱, Czech 🇨🇿, Greek 🇬🇷, Hungarian 🇭🇺, Romanian 🇷🇴 |
-| Nordic | Swedish 🇸🇪, Danish 🇩🇰, Finnish 🇫🇮, Norwegian 🇳🇴 |
-| Middle East | Arabic 🇸🇦, Hebrew 🇮🇱, Turkish 🇹🇷 |
-| Eastern Europe | Russian 🇷🇺, Ukrainian 🇺🇦 |
-| South Asia | Hindi 🇮🇳 |
-| Southeast Asia | Thai 🇹🇭, Vietnamese 🇻🇳, Indonesian 🇮🇩, Malay 🇲🇾 |
+| Western Europe | Spanish 🇪🇸, French 🇫🇷, German 🇩🇪, Italian 🇮🇹, Portuguese 🇵🇹, Dutch 🇳🇱 |
+| Central Europe | Polish 🇵🇱, Czech 🇨🇿, Hungarian 🇭🇺, Romanian 🇷🇴, Slovak 🇸🇰, Slovenian 🇸🇮, Croatian 🇭🇷 |
+| Nordic | Swedish 🇸🇪, Danish 🇩🇰, Finnish 🇫🇮, Norwegian 🇳🇴, Icelandic 🇮🇸 |
+| Other | Turkish 🇹🇷, Indonesian 🇮🇩, Malay 🇲🇾, Vietnamese 🇻🇳, Tagalog 🇵🇭 |
+
+> **Coming Soon:** Support for non-Latin scripts including Chinese, Japanese, Korean, Arabic, Hebrew, Russian, Greek, and more.
 
 ## 🔮 Future Enhancements
 
+- [ ] Support for non-Latin script languages
 - [ ] Batch processing for multiple documents
 - [ ] Custom terminology glossaries
 - [ ] Human translation review workflow

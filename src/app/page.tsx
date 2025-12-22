@@ -454,9 +454,9 @@ export default function Home() {
                       <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
                         <Globe className="w-6 h-6 text-blue-600" />
                       </div>
-                      <h3 className="font-semibold text-gray-800 mb-2">50+ Languages</h3>
+                      <h3 className="font-semibold text-gray-800 mb-2">Latin Alphabet Languages</h3>
                       <p className="text-sm text-gray-600">
-                        Support for Japanese, Chinese, Korean, Arabic, Russian, and many more languages.
+                        Support for Spanish, French, German, Portuguese, Italian, and other Latin-script languages.
                       </p>
                     </div>
                     <div className="bg-white p-6 rounded-xl border border-gray-200">

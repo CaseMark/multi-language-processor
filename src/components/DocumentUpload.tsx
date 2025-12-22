@@ -293,10 +293,10 @@ export default function DocumentUpload({
       {/* Supported Languages */}
       <div className="mt-6">
         <p className="text-sm text-gray-500 text-center mb-3">
-          Supports 50+ languages including:
+          Supports Latin alphabet languages including:
         </p>
         <div className="flex flex-wrap justify-center gap-2">
-          {['ja', 'zh', 'ko', 'es', 'fr', 'de', 'ar', 'ru'].map((code) => {
+          {['es', 'fr', 'de', 'it', 'pt', 'nl', 'pl', 'sv'].map((code) => {
             const lang = SUPPORTED_LANGUAGES[code as LanguageCode];
             return (
               <span 
@@ -309,7 +309,7 @@ export default function DocumentUpload({
             );
           })}
           <span className="inline-flex items-center px-2 py-1 bg-gray-100 rounded text-xs text-gray-600">
-            +42 more
+            +16 more
           </span>
         </div>
       </div>

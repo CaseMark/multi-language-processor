@@ -1,34 +1,34 @@
 // Supported languages for OCR and translation
+// Currently limited to Latin alphabet languages only
 export const SUPPORTED_LANGUAGES = {
-  ja: { name: 'Japanese', nativeName: '日本語', flag: '🇯🇵' },
-  zh: { name: 'Chinese (Simplified)', nativeName: '简体中文', flag: '🇨🇳' },
-  'zh-TW': { name: 'Chinese (Traditional)', nativeName: '繁體中文', flag: '🇹🇼' },
-  ko: { name: 'Korean', nativeName: '한국어', flag: '🇰🇷' },
+  // Western European
   es: { name: 'Spanish', nativeName: 'Español', flag: '🇪🇸' },
   fr: { name: 'French', nativeName: 'Français', flag: '🇫🇷' },
   de: { name: 'German', nativeName: 'Deutsch', flag: '🇩🇪' },
   it: { name: 'Italian', nativeName: 'Italiano', flag: '🇮🇹' },
   pt: { name: 'Portuguese', nativeName: 'Português', flag: '🇵🇹' },
-  ru: { name: 'Russian', nativeName: 'Русский', flag: '🇷🇺' },
-  ar: { name: 'Arabic', nativeName: 'العربية', flag: '🇸🇦' },
-  hi: { name: 'Hindi', nativeName: 'हिन्दी', flag: '🇮🇳' },
-  th: { name: 'Thai', nativeName: 'ไทย', flag: '🇹🇭' },
-  vi: { name: 'Vietnamese', nativeName: 'Tiếng Việt', flag: '🇻🇳' },
   nl: { name: 'Dutch', nativeName: 'Nederlands', flag: '🇳🇱' },
+  // Central European
   pl: { name: 'Polish', nativeName: 'Polski', flag: '🇵🇱' },
-  tr: { name: 'Turkish', nativeName: 'Türkçe', flag: '🇹🇷' },
-  he: { name: 'Hebrew', nativeName: 'עברית', flag: '🇮🇱' },
+  cs: { name: 'Czech', nativeName: 'Čeština', flag: '🇨🇿' },
+  hu: { name: 'Hungarian', nativeName: 'Magyar', flag: '🇭🇺' },
+  ro: { name: 'Romanian', nativeName: 'Română', flag: '🇷🇴' },
+  sk: { name: 'Slovak', nativeName: 'Slovenčina', flag: '🇸🇰' },
+  sl: { name: 'Slovenian', nativeName: 'Slovenščina', flag: '🇸🇮' },
+  hr: { name: 'Croatian', nativeName: 'Hrvatski', flag: '🇭🇷' },
+  // Nordic
   sv: { name: 'Swedish', nativeName: 'Svenska', flag: '🇸🇪' },
   da: { name: 'Danish', nativeName: 'Dansk', flag: '🇩🇰' },
   fi: { name: 'Finnish', nativeName: 'Suomi', flag: '🇫🇮' },
   no: { name: 'Norwegian', nativeName: 'Norsk', flag: '🇳🇴' },
-  cs: { name: 'Czech', nativeName: 'Čeština', flag: '🇨🇿' },
-  el: { name: 'Greek', nativeName: 'Ελληνικά', flag: '🇬🇷' },
-  hu: { name: 'Hungarian', nativeName: 'Magyar', flag: '🇭🇺' },
-  ro: { name: 'Romanian', nativeName: 'Română', flag: '🇷🇴' },
-  uk: { name: 'Ukrainian', nativeName: 'Українська', flag: '🇺🇦' },
+  is: { name: 'Icelandic', nativeName: 'Íslenska', flag: '🇮🇸' },
+  // Other Latin-script languages
+  tr: { name: 'Turkish', nativeName: 'Türkçe', flag: '🇹🇷' },
   id: { name: 'Indonesian', nativeName: 'Bahasa Indonesia', flag: '🇮🇩' },
   ms: { name: 'Malay', nativeName: 'Bahasa Melayu', flag: '🇲🇾' },
+  vi: { name: 'Vietnamese', nativeName: 'Tiếng Việt', flag: '🇻🇳' },
+  tl: { name: 'Tagalog', nativeName: 'Tagalog', flag: '🇵🇭' },
+  // English (target language)
   en: { name: 'English', nativeName: 'English', flag: '🇺🇸' },
 } as const;
 
