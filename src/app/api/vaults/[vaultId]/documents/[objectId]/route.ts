@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Force dynamic rendering - this route requires runtime environment variables
+export const dynamic = 'force-dynamic';
+
 const API_BASE_URL = process.env.CASE_API_URL || 'https://api.case.dev';
-const API_KEY = process.env.CASE_API_KEY;
+
+// Helper to get API key at runtime
+function getApiKey(): string | undefined {
+  return process.env.CASE_API_KEY;
+}
 
 // Supported Latin alphabet language codes
 const LANGUAGE_NAMES: Record<string, string> = {
@@ -42,8 +49,8 @@ const SUPPORTED_LANG_CODES = Object.entries(LANGUAGE_NAMES)
   .join(', ');
 
 // Detect language using LLM
-async function detectLanguageWithLLM(text: string): Promise<{ language: string; languageName: string; confidence: number }> {
-  if (!API_KEY || text.length < 50) {
+async function detectLanguageWithLLM(text: string, apiKey: string): Promise<{ language: string; languageName: string; confidence: number }> {
+  if (text.length < 50) {
     return { language: 'en', languageName: 'English', confidence: 0.5 };
   }
 
@@ -53,7 +60,7 @@ async function detectLanguageWithLLM(text: string): Promise<{ language: string; 
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -108,8 +115,8 @@ ${sampleText}`
   }
 }
 
-async function translateText(text: string, sourceLanguage: string): Promise<string> {
-  if (!API_KEY || sourceLanguage === 'en') {
+async function translateText(text: string, sourceLanguage: string, apiKey: string): Promise<string> {
+  if (sourceLanguage === 'en') {
     return text;
   }
 
@@ -119,7 +126,7 @@ async function translateText(text: string, sourceLanguage: string): Promise<stri
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -156,8 +163,8 @@ Provide ONLY the translation, no explanations or notes.`
 }
 
 // Clean up OCR text formatting using LLM
-async function cleanupOCRText(text: string, sourceLanguage: string): Promise<string> {
-  if (!API_KEY || text.length < 50 || sourceLanguage === 'en') {
+async function cleanupOCRText(text: string, sourceLanguage: string, apiKey: string): Promise<string> {
+  if (text.length < 50 || sourceLanguage === 'en') {
     return text;
   }
 
@@ -167,7 +174,7 @@ async function cleanupOCRText(text: string, sourceLanguage: string): Promise<str
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -212,6 +219,7 @@ Output ONLY the cleaned up ${langName} text, nothing else.`
 async function saveTranslationToVault(
   vaultId: string, 
   objectId: string, 
+  apiKey: string,
   data: { 
     originalText: string;
     translatedText: string; 
@@ -223,7 +231,7 @@ async function saveTranslationToVault(
     await fetch(`${API_BASE_URL}/vault/${vaultId}/objects/${objectId}/metadata`, {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -245,15 +253,21 @@ export async function GET(
 ) {
   const { vaultId, objectId } = await params;
   
-  if (!API_KEY) {
-    return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
+  // Check API key at runtime, not build time
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: 'API key not configured. Please set CASE_API_KEY in your environment variables.' }, 
+      { status: 500 }
+    );
   }
 
   try {
     // Get object metadata
     const metaResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/objects/${objectId}`, {
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
     });
 
@@ -287,7 +301,7 @@ export async function GET(
     // Get extracted text from vault
     const textResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/objects/${objectId}/text`, {
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
       },
     });
 
@@ -306,7 +320,7 @@ export async function GET(
       language = cachedLanguage;
       languageName = cachedLanguageName || LANGUAGE_NAMES[cachedLanguage] || 'Unknown';
     } else {
-      const detected = await detectLanguageWithLLM(rawText);
+      const detected = await detectLanguageWithLLM(rawText, apiKey);
       language = detected.language;
       languageName = detected.languageName;
     }
@@ -314,16 +328,16 @@ export async function GET(
     // Clean up the OCR text if not English
     let cleanedOriginalText = rawText;
     if (language !== 'en') {
-      cleanedOriginalText = await cleanupOCRText(rawText, language);
+      cleanedOriginalText = await cleanupOCRText(rawText, language, apiKey);
     }
 
     // Translate if not English
     let translatedText = cleanedOriginalText;
     if (language !== 'en') {
-      translatedText = await translateText(cleanedOriginalText, language);
+      translatedText = await translateText(cleanedOriginalText, language, apiKey);
       
       // Save both cleaned original and translation to vault for future use
-      await saveTranslationToVault(vaultId, objectId, {
+      await saveTranslationToVault(vaultId, objectId, apiKey, {
         originalText: cleanedOriginalText,
         translatedText,
         detectedLanguage: language,

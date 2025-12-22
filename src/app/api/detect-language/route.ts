@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Force dynamic rendering - this route requires runtime environment variables
+export const dynamic = 'force-dynamic';
+
 const API_BASE_URL = process.env.CASE_API_URL || 'https://api.case.dev';
-const API_KEY = process.env.CASE_API_KEY;
+
+// Helper to get API key at runtime
+function getApiKey(): string | undefined {
+  return process.env.CASE_API_KEY;
+}
 
 // Supported Latin alphabet language codes
 const LANGUAGE_CODES: Record<string, string> = {
@@ -43,6 +50,9 @@ const SUPPORTED_LANG_CODES = Object.entries(LANGUAGE_CODES)
 
 // Quick language detection endpoint - returns fast before OCR/translation
 export async function POST(request: NextRequest) {
+  // Check API key at runtime
+  const apiKey = getApiKey();
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -51,7 +61,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    if (!API_KEY) {
+    if (!apiKey) {
       return NextResponse.json({ 
         language: 'unknown', 
         languageName: 'Unknown', 
@@ -76,7 +86,7 @@ export async function POST(request: NextRequest) {
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 
+// Force dynamic rendering - this route requires runtime environment variables
+export const dynamic = 'force-dynamic';
+
 const API_BASE_URL = process.env.CASE_API_URL || 'https://api.case.dev';
-const API_KEY = process.env.CASE_API_KEY;
 
 // Check if a vault name matches our app's naming patterns
 function isAppVault(vaultName: string): boolean {
@@ -18,23 +20,26 @@ function isAppVault(vaultName: string): boolean {
 }
 
 export async function GET() {
-  if (!API_KEY) {
-    return NextResponse.json({ error: 'API key not configured' }, { status: 500 });
+  // Check API key at runtime, not build time
+  const apiKey = process.env.CASE_API_KEY;
+  
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: 'API key not configured. Please set CASE_API_KEY in your environment variables.' }, 
+      { status: 500 }
+    );
   }
 
   try {
-    // Add cache-busting to ensure we get fresh data
     const response = await fetch(`${API_BASE_URL}/vault`, {
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Cache-Control': 'no-cache',
       },
       cache: 'no-store',
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Failed to fetch vaults:', errorText);
       return NextResponse.json({ error: 'Failed to fetch vaults' }, { status: response.status });
     }
 
@@ -49,8 +54,7 @@ export async function GET() {
       });
     
     return NextResponse.json(filteredVaults);
-  } catch (error) {
-    console.error('Error fetching vaults:', error);
+  } catch {
     return NextResponse.json({ error: 'Failed to fetch vaults' }, { status: 500 });
   }
 }

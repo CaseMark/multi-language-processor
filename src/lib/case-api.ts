@@ -13,13 +13,19 @@ import {
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_CASE_API_URL || 'https://api.case.dev';
 
-// Helper to get API key
+// Helper to get API key - checks at runtime, not build time
 function getApiKey(): string {
+  // Check for Vercel environment variable first, then fall back to local .env
   const apiKey = process.env.CASE_API_KEY || process.env.NEXT_PUBLIC_CASE_API_KEY;
   if (!apiKey) {
-    throw new Error('CASE_API_KEY environment variable is not set');
+    throw new Error('CASE_API_KEY environment variable is not set. Please configure CASE_API_KEY in your Vercel project settings or .env.local file.');
   }
   return apiKey;
+}
+
+// Check if API key is configured (for use in API routes)
+export function isApiKeyConfigured(): boolean {
+  return !!(process.env.CASE_API_KEY || process.env.NEXT_PUBLIC_CASE_API_KEY);
 }
 
 // Helper for API requests

@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+// Force dynamic rendering - this route requires runtime environment variables
+export const dynamic = 'force-dynamic';
+
 const API_BASE_URL = process.env.CASE_API_URL || 'https://api.case.dev';
-const API_KEY = process.env.CASE_API_KEY;
+
+// Helper to get API key at runtime
+function getApiKey(): string | undefined {
+  return process.env.CASE_API_KEY;
+}
 
 // Maximum file size: 10MB
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -45,11 +52,7 @@ const SUPPORTED_LANG_CODES = Object.entries(LANGUAGE_CODES)
   .join(', ');
 
 // Detect language from document using LLM (primary method)
-async function detectLanguageWithLLM(buffer: Buffer, contentType: string): Promise<{ language: string; languageName: string; confidence: number }> {
-  if (!API_KEY) {
-    return { language: 'unknown', languageName: 'Unknown', confidence: 0 };
-  }
-
+async function detectLanguageWithLLM(buffer: Buffer, contentType: string, apiKey: string): Promise<{ language: string; languageName: string; confidence: number }> {
   try {
     const base64Data = buffer.toString('base64');
     
@@ -64,7 +67,7 @@ async function detectLanguageWithLLM(buffer: Buffer, contentType: string): Promi
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -120,8 +123,8 @@ Document content (base64 ${mediaType}): ${base64Data.slice(0, 10000)}...`
 }
 
 // Clean up OCR text formatting using LLM
-async function cleanupOCRText(text: string, sourceLanguage: string): Promise<string> {
-  if (!API_KEY || text.length < 50) {
+async function cleanupOCRText(text: string, sourceLanguage: string, apiKey: string): Promise<string> {
+  if (text.length < 50) {
     return text;
   }
 
@@ -131,7 +134,7 @@ async function cleanupOCRText(text: string, sourceLanguage: string): Promise<str
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -173,18 +176,14 @@ Output ONLY the cleaned up ${langName} text, nothing else.`
 }
 
 // Translate text using Case.dev LLM API
-async function translateText(text: string, sourceLanguage: string): Promise<string> {
-  if (!API_KEY) {
-    return `[Translation requires CASE_API_KEY]\n\nOriginal ${sourceLanguage} text:\n${text}`;
-  }
-
+async function translateText(text: string, sourceLanguage: string, apiKey: string): Promise<string> {
   const langName = LANGUAGE_CODES[sourceLanguage] || sourceLanguage;
 
   try {
     const response = await fetch(`${API_BASE_URL}/llm/v1/chat/completions`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -228,7 +227,7 @@ function getDocumentBaseName(filename: string): string {
 }
 
 // Create or get a vault for document processing
-async function getOrCreateVault(filename: string): Promise<string> {
+async function getOrCreateVault(filename: string, apiKey: string): Promise<string> {
   const envVaultId = process.env.CASE_VAULT_ID;
   if (envVaultId) {
     return envVaultId;
@@ -240,7 +239,7 @@ async function getOrCreateVault(filename: string): Promise<string> {
   const response = await fetch(`${API_BASE_URL}/vault`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -260,14 +259,14 @@ async function getOrCreateVault(filename: string): Promise<string> {
 }
 
 // Upload file to temporary storage and get a public URL for OCR
-async function uploadToVaultAndGetUrl(buffer: Buffer, filename: string, contentType: string): Promise<{ url: string; objectId: string; vaultId: string }> {
-  const vaultId = await getOrCreateVault(filename);
+async function uploadToVaultAndGetUrl(buffer: Buffer, filename: string, contentType: string, apiKey: string): Promise<{ url: string; objectId: string; vaultId: string }> {
+  const vaultId = await getOrCreateVault(filename, apiKey);
 
   // Get presigned upload URL
   const uploadResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/upload`, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -300,7 +299,7 @@ async function uploadToVaultAndGetUrl(buffer: Buffer, filename: string, contentT
   // Get the download URL for the uploaded file
   const objectResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/objects/${uploadData.objectId}`, {
     headers: {
-      'Authorization': `Bearer ${API_KEY}`,
+      'Authorization': `Bearer ${apiKey}`,
     },
   });
 
@@ -322,6 +321,7 @@ async function uploadToVaultAndGetUrl(buffer: Buffer, filename: string, contentT
 async function saveProcessedDataToVault(
   vaultId: string, 
   objectId: string, 
+  apiKey: string,
   data: { 
     originalText: string;
     translatedText: string; 
@@ -333,7 +333,7 @@ async function saveProcessedDataToVault(
     await fetch(`${API_BASE_URL}/vault/${vaultId}/objects/${objectId}/metadata`, {
       method: 'PATCH',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -350,19 +350,15 @@ async function saveProcessedDataToVault(
 }
 
 // Extract text from PDF using vault ingestion
-async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<{ text: string; vaultId: string; objectId: string }> {
-  if (!API_KEY) {
-    return { text: '[Text extraction requires CASE_API_KEY - Please add your API key to .env.local]', vaultId: '', objectId: '' };
-  }
-
+async function extractTextFromPDF(buffer: Buffer, filename: string, apiKey: string): Promise<{ text: string; vaultId: string; objectId: string }> {
   try {
-    const vaultId = await getOrCreateVault(filename);
+    const vaultId = await getOrCreateVault(filename, apiKey);
 
     // Get presigned upload URL
     const uploadResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/upload`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -393,17 +389,13 @@ async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<{ t
     }
 
     // Trigger ingestion
-    const ingestResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/ingest/${uploadData.objectId}`, {
+    await fetch(`${API_BASE_URL}/vault/${vaultId}/ingest/${uploadData.objectId}`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
     });
-
-    if (!ingestResponse.ok) {
-      // Log but continue - ingestion may still work
-    }
 
     // Poll for ingestion completion
     let attempts = 0;
@@ -411,7 +403,7 @@ async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<{ t
     while (attempts < maxAttempts) {
       const statusResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/objects/${uploadData.objectId}`, {
         headers: {
-          'Authorization': `Bearer ${API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
         },
       });
 
@@ -424,7 +416,7 @@ async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<{ t
       if (status.ingestionStatus === 'completed') {
         const textResponse = await fetch(`${API_BASE_URL}/vault/${vaultId}/objects/${uploadData.objectId}/text`, {
           headers: {
-            'Authorization': `Bearer ${API_KEY}`,
+            'Authorization': `Bearer ${apiKey}`,
           },
         });
 
@@ -452,19 +444,15 @@ async function extractTextFromPDF(buffer: Buffer, filename: string): Promise<{ t
 }
 
 // Extract text from image using direct OCR API
-async function extractTextFromImage(buffer: Buffer, mimeType: string, filename: string): Promise<string> {
-  if (!API_KEY) {
-    return '[Text extraction requires CASE_API_KEY - Please add your API key to .env.local]';
-  }
-
+async function extractTextFromImage(buffer: Buffer, mimeType: string, filename: string, apiKey: string): Promise<string> {
   try {
-    const { url: documentUrl } = await uploadToVaultAndGetUrl(buffer, filename, mimeType);
+    const { url: documentUrl } = await uploadToVaultAndGetUrl(buffer, filename, mimeType, apiKey);
 
     // Submit OCR job with tesseract engine
     const ocrResponse = await fetch(`${API_BASE_URL}/ocr/v1/process`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -486,7 +474,7 @@ async function extractTextFromImage(buffer: Buffer, mimeType: string, filename: 
     while (attempts < maxAttempts) {
       const statusResponse = await fetch(`${API_BASE_URL}/ocr/v1/${ocrJob.id}`, {
         headers: {
-          'Authorization': `Bearer ${API_KEY}`,
+          'Authorization': `Bearer ${apiKey}`,
         },
       });
 
@@ -499,7 +487,7 @@ async function extractTextFromImage(buffer: Buffer, mimeType: string, filename: 
       if (status.status === 'completed') {
         const textResponse = await fetch(`${API_BASE_URL}/ocr/v1/${ocrJob.id}/download/text`, {
           headers: {
-            'Authorization': `Bearer ${API_KEY}`,
+            'Authorization': `Bearer ${apiKey}`,
           },
         });
 
@@ -526,6 +514,16 @@ async function extractTextFromImage(buffer: Buffer, mimeType: string, filename: 
 }
 
 export async function POST(request: NextRequest) {
+  // Check API key at runtime
+  const apiKey = getApiKey();
+  
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: 'API key not configured. Please set CASE_API_KEY in your environment variables.' }, 
+      { status: 500 }
+    );
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -549,7 +547,7 @@ export async function POST(request: NextRequest) {
     let detectedLang = { language: 'en', languageName: 'English', confidence: 0.5 };
     
     if (file.type === 'application/pdf' || file.type.startsWith('image/')) {
-      detectedLang = await detectLanguageWithLLM(buffer, file.type);
+      detectedLang = await detectLanguageWithLLM(buffer, file.type, apiKey);
     }
     
     // Extract text
@@ -563,21 +561,21 @@ export async function POST(request: NextRequest) {
       detectedLang = { language: 'en', languageName: 'English', confidence: 0.5 };
     } else if (file.type === 'application/pdf') {
       try {
-        const result = await extractTextFromPDF(buffer, file.name);
+        const result = await extractTextFromPDF(buffer, file.name, apiKey);
         originalText = result.text;
         vaultId = result.vaultId;
         objectId = result.objectId;
-      } catch (error) {
+      } catch {
         return NextResponse.json({ 
-          error: 'PDF text extraction failed. Please ensure CASE_API_KEY is set.' 
+          error: 'PDF text extraction failed. Please try again.' 
         }, { status: 500 });
       }
     } else if (file.type.startsWith('image/')) {
       try {
-        originalText = await extractTextFromImage(buffer, file.type, file.name);
-      } catch (error) {
+        originalText = await extractTextFromImage(buffer, file.type, file.name, apiKey);
+      } catch {
         return NextResponse.json({ 
-          error: 'Image text extraction failed. Please ensure CASE_API_KEY is set.' 
+          error: 'Image text extraction failed. Please try again.' 
         }, { status: 500 });
       }
     } else {
@@ -586,18 +584,18 @@ export async function POST(request: NextRequest) {
 
     // Clean up OCR text formatting (for non-English documents)
     if (detectedLang.language !== 'en' && originalText.length > 50) {
-      originalText = await cleanupOCRText(originalText, detectedLang.language);
+      originalText = await cleanupOCRText(originalText, detectedLang.language, apiKey);
     }
     
     // Translate to English if not already English
     let translatedText = originalText;
     if (detectedLang.language !== 'en') {
-      translatedText = await translateText(originalText, detectedLang.language);
+      translatedText = await translateText(originalText, detectedLang.language, apiKey);
     }
 
     // Save processed data to vault metadata for caching
     if (vaultId && objectId) {
-      await saveProcessedDataToVault(vaultId, objectId, {
+      await saveProcessedDataToVault(vaultId, objectId, apiKey, {
         originalText,
         translatedText,
         detectedLanguage: detectedLang.language,
@@ -615,7 +613,7 @@ export async function POST(request: NextRequest) {
       pageCount: 1,
     });
 
-  } catch (error) {
+  } catch {
     return NextResponse.json({ 
       error: 'Processing failed. Please try again.' 
     }, { status: 500 });
