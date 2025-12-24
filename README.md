@@ -2,6 +2,8 @@
 
 Upload documents in Latin-script languages, OCR them, translate to English, and make them searchable in both languages. Built for international litigation and cross-border legal matters.
 
+Live demo at: https://www.case.dev/gallery
+
 ![Multi-Language Processor](https://img.shields.io/badge/Next.js-14-black?style=flat-square&logo=next.js)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue?style=flat-square&logo=typescript)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-3.4-38B2AC?style=flat-square&logo=tailwind-css)
